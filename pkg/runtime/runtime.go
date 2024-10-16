@@ -86,6 +86,7 @@ import (
 	"github.com/dapr/dapr/utils"
 	"github.com/dapr/kit/concurrency"
 	"github.com/dapr/kit/logger"
+	"github.com/nats-io/nats.go"
 )
 
 var log = logger.NewLogger("dapr.runtime")
@@ -128,6 +129,9 @@ type DaprRuntime struct {
 	runnerCloser          *concurrency.RunnerCloserManager
 	clock                 clock.Clock
 	reloader              *hotreload.Reloader
+
+	natsJS   nats.JetStreamContext
+	natsConn *nats.Conn
 
 	// Used for testing.
 	initComplete chan struct{}
@@ -568,6 +572,25 @@ func (a *DaprRuntime) initRuntime(ctx context.Context) error {
 		WorkflowEngine:              wfe,
 	})
 
+	// Initialize NATS connection and JetStream context
+	natsConn, err := nats.Connect(nats.DefaultURL)
+	if err != nil {
+		return fmt.Errorf("failed to connect to NATS: %w", err)
+	}
+
+	natsJS, err := natsConn.JetStream()
+	if err != nil {
+		return fmt.Errorf("failed to initialize NATS JetStream: %w", err)
+	}
+
+	a.natsConn = natsConn
+	a.natsJS = natsJS
+
+	// Add the NATS connection close method to the runner closer manager
+	if err = a.runnerCloser.AddCloser(natsConn.Close); err != nil {
+		return err
+	}
+
 	// Create and start internal and external gRPC servers
 	a.daprGRPCAPI = grpc.NewAPI(grpc.APIOpts{
 		Universal:             a.daprUniversal,
@@ -581,6 +604,8 @@ func (a *DaprRuntime) initRuntime(ctx context.Context) error {
 		TracingSpec:           a.globalConfig.GetTracingSpec(),
 		AccessControlList:     a.accessControlList,
 		Processor:             a.processor,
+		NATSConn:              a.natsConn,
+		NATSJS:                a.natsJS,
 	})
 
 	if err = a.runnerCloser.AddCloser(a.daprGRPCAPI); err != nil {

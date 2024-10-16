@@ -63,6 +63,7 @@ import (
 	"github.com/dapr/dapr/utils"
 	kiterrors "github.com/dapr/kit/errors"
 	"github.com/dapr/kit/logger"
+	"github.com/nats-io/nats.go"
 )
 
 const (
@@ -99,6 +100,9 @@ type api struct {
 	closed                atomic.Bool
 	closeCh               chan struct{}
 	wg                    sync.WaitGroup
+
+	natsConn *nats.Conn
+	natsJS   nats.JetStreamContext
 }
 
 // APIOpts contains options for NewAPI.
@@ -114,6 +118,9 @@ type APIOpts struct {
 	TracingSpec           config.TracingSpec
 	AccessControlList     *config.AccessControlList
 	Processor             *processor.Processor
+
+	NATSConn *nats.Conn
+	NATSJS   nats.JetStreamContext
 }
 
 // NewAPI returns a new gRPC API.
@@ -132,6 +139,9 @@ func NewAPI(opts APIOpts) API {
 		accessControlList:     opts.AccessControlList,
 		processor:             opts.Processor,
 		closeCh:               make(chan struct{}),
+
+		natsConn: opts.NATSConn,
+		natsJS:   opts.NATSJS,
 	}
 }
 

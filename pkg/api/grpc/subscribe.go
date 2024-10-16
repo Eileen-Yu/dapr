@@ -14,7 +14,10 @@ limitations under the License.
 package grpc
 
 import (
+	"encoding/json"
 	"errors"
+	"fmt"
+	"time"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
@@ -100,6 +103,26 @@ func (a *api) streamSubscribe(stream runtimev1pb.Dapr_SubscribeTopicEventsAlpha1
 		},
 	}); err != nil {
 		return err
+	}
+
+	// Publish event to NATS
+	subject := fmt.Sprintf("%s.%s", req.GetPubsubName(), req.GetTopic())
+	msg := map[string]interface{}{
+		"message": "New streaming subscription event",
+		"pubsub":  req.GetPubsubName(),
+		"topic":   req.GetTopic(),
+		"event":   "subscription_started",
+		"time":    time.Now().UTC().Format(time.RFC3339),
+	}
+	msgData, err := json.Marshal(msg)
+	if err != nil {
+		return fmt.Errorf("failed to marshal NATS message: %v", err)
+	}
+
+	_, err = a.natsJS.Publish(subject, []byte(msgData))
+	if err != nil {
+		fmt.Errorf("NATS publish error: %v", err)
+		// Continue with subscription even if publishing fails
 	}
 
 	return a.pubsubAdapterStreamer.Subscribe(stream, req)
