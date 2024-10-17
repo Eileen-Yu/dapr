@@ -121,9 +121,9 @@ func (a *api) streamSubscribe(stream runtimev1pb.Dapr_SubscribeTopicEventsAlpha1
 	}
 
 	if a.natsPublishCallback != nil {
-		err = a.natsPublishCallback(context.Background(), subject, []byte(msgData))
+		err = a.natsPublishCallback(context.Background(), subject, msgData)
 		if err != nil {
-			fmt.Errorf("NATS publish error: %v", err)
+			fmt.Printf("NATS publish error: %v", err)
 			// Continue with subscription even if publishing fails
 		}
 	}

@@ -72,8 +72,6 @@ const (
 
 type PublishEventCallback func(ctx context.Context, subject string, data []byte) error
 
-var natsPublishCallback PublishEventCallback
-
 // API is the gRPC interface for the Dapr gRPC API. It implements both the internal and external proto definitions.
 type API interface {
 	io.Closer
@@ -144,11 +142,6 @@ func NewAPI(opts APIOpts) API {
 		// for catalyst NATS eventing
 		natsPublishCallback: opts.NatsPublishCallback,
 	}
-}
-
-// RegisterNATSCallback registers a callback for publishing to NATS
-func RegisterNATSCallback(callback PublishEventCallback) {
-	natsPublishCallback = callback
 }
 
 // validateAndGetPubsubAndTopic validates the request parameters and returns the pubsub interface, pubsub name, topic name, rawPayload metadata if set

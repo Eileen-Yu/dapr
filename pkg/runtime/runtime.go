@@ -27,6 +27,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/nats-io/nats.go"
 	"go.opentelemetry.io/otel/exporters/otlp/otlptrace"
 	otlptracegrpc "go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc"
 	otlptracehttp "go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracehttp"
@@ -86,7 +87,6 @@ import (
 	"github.com/dapr/dapr/utils"
 	"github.com/dapr/kit/concurrency"
 	"github.com/dapr/kit/logger"
-	"github.com/nats-io/nats.go"
 )
 
 var log = logger.NewLogger("dapr.runtime")
@@ -1462,11 +1462,10 @@ func (a *DaprRuntime) initNATS(ctx context.Context) error {
 		}
 
 		natsPublishCallback := func(ctx context.Context, subject string, data []byte) error {
-			_, err := natsJS.Publish(subject, data)
+			_, err = natsJS.Publish(subject, data)
 			return err
 		}
 
-		grpc.RegisterNATSCallback(natsPublishCallback)
 		a.natsPublishCallback = natsPublishCallback
 
 		// Add the NATS connection close method to the runner closer
