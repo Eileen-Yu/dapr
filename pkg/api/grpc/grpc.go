@@ -70,6 +70,8 @@ const (
 	metadataPrefix       = "metadata."
 )
 
+type PublishEventCallback func(ctx context.Context, subject string, data []byte) error
+
 // API is the gRPC interface for the Dapr gRPC API. It implements both the internal and external proto definitions.
 type API interface {
 	io.Closer
@@ -99,6 +101,9 @@ type api struct {
 	closed                atomic.Bool
 	closeCh               chan struct{}
 	wg                    sync.WaitGroup
+
+	// for catalyst NATS eventing
+	natsPublishCallback PublishEventCallback
 }
 
 // APIOpts contains options for NewAPI.
@@ -114,6 +119,8 @@ type APIOpts struct {
 	TracingSpec           config.TracingSpec
 	AccessControlList     *config.AccessControlList
 	Processor             *processor.Processor
+	// for catalyst NATS eventing
+	NatsPublishCallback PublishEventCallback
 }
 
 // NewAPI returns a new gRPC API.
@@ -132,6 +139,8 @@ func NewAPI(opts APIOpts) API {
 		accessControlList:     opts.AccessControlList,
 		processor:             opts.Processor,
 		closeCh:               make(chan struct{}),
+		// for catalyst NATS eventing
+		natsPublishCallback: opts.NatsPublishCallback,
 	}
 }
 

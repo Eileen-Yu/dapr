@@ -27,6 +27,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/nats-io/nats.go"
 	"go.opentelemetry.io/otel/exporters/otlp/otlptrace"
 	otlptracegrpc "go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc"
 	otlptracehttp "go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracehttp"
@@ -128,6 +129,8 @@ type DaprRuntime struct {
 	runnerCloser          *concurrency.RunnerCloserManager
 	clock                 clock.Clock
 	reloader              *hotreload.Reloader
+
+	natsPublishCallback grpc.PublishEventCallback
 
 	// Used for testing.
 	initComplete chan struct{}
@@ -568,6 +571,12 @@ func (a *DaprRuntime) initRuntime(ctx context.Context) error {
 		WorkflowEngine:              wfe,
 	})
 
+	// Initialize NATS connection and JetStream context
+	err = a.initNATS(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to initialize NATS: %w", err)
+	}
+
 	// Create and start internal and external gRPC servers
 	a.daprGRPCAPI = grpc.NewAPI(grpc.APIOpts{
 		Universal:             a.daprUniversal,
@@ -581,6 +590,7 @@ func (a *DaprRuntime) initRuntime(ctx context.Context) error {
 		TracingSpec:           a.globalConfig.GetTracingSpec(),
 		AccessControlList:     a.accessControlList,
 		Processor:             a.processor,
+		NatsPublishCallback:   a.natsPublishCallback,
 	})
 
 	if err = a.runnerCloser.AddCloser(a.daprGRPCAPI); err != nil {
@@ -1436,5 +1446,33 @@ func (a *DaprRuntime) stopTrace(ctx context.Context) error {
 	} else {
 		a.tracerProvider = nil
 	}
+	return nil
+}
+
+func (a *DaprRuntime) initNATS(ctx context.Context) error {
+	if os.Getenv("ENABLE_NATS") == "true" {
+		natsConn, err := nats.Connect(nats.DefaultURL)
+		if err != nil {
+			return fmt.Errorf("failed to connect to NATS: %w", err)
+		}
+
+		natsJS, err := natsConn.JetStream()
+		if err != nil {
+			return fmt.Errorf("failed to initialize NATS JetStream: %w", err)
+		}
+
+		natsPublishCallback := func(ctx context.Context, subject string, data []byte) error {
+			_, err = natsJS.Publish(subject, data)
+			return err
+		}
+
+		a.natsPublishCallback = natsPublishCallback
+
+		// Add the NATS connection close method to the runner closer
+		if err = a.runnerCloser.AddCloser(natsConn.Close); err != nil {
+			return err
+		}
+	}
+
 	return nil
 }

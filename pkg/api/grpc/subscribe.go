@@ -14,13 +14,20 @@ limitations under the License.
 package grpc
 
 import (
+	"context"
+	"encoding/json"
 	"errors"
+	"fmt"
+	"time"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	subapi "github.com/dapr/dapr/pkg/apis/subscriptions/v2alpha1"
 	runtimev1pb "github.com/dapr/dapr/pkg/proto/runtime/v1"
+	"github.com/dapr/kit/logger"
 )
+
+var log = logger.NewLogger("catalyst.nats")
 
 // SubscribeTopicEvents is called by the Dapr runtime to ad hoc stream
 // subscribe to topics. If gRPC API server closes, returns func early with nil
@@ -100,6 +107,28 @@ func (a *api) streamSubscribe(stream runtimev1pb.Dapr_SubscribeTopicEventsAlpha1
 		},
 	}); err != nil {
 		return err
+	}
+
+	// Publish event to NATS
+	subject := fmt.Sprintf("%s.%s", req.GetPubsubName(), req.GetTopic())
+	msg := map[string]interface{}{
+		"message": "New streaming subscription event",
+		"pubsub":  req.GetPubsubName(),
+		"topic":   req.GetTopic(),
+		"event":   "subscription_started",
+		"time":    time.Now().UTC().Format(time.RFC3339),
+	}
+	msgData, err := json.Marshal(msg)
+	if err != nil {
+		return fmt.Errorf("failed to marshal NATS message: %v", err)
+	}
+
+	if a.natsPublishCallback != nil {
+		err = a.natsPublishCallback(context.Background(), subject, msgData)
+		if err != nil {
+			log.Errorf("NATS publish error: %v", err)
+			// Continue with subscription even if publishing fails
+		}
 	}
 
 	return a.pubsubAdapterStreamer.Subscribe(stream, req)
