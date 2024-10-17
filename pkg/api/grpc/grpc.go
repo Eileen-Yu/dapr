@@ -63,13 +63,16 @@ import (
 	"github.com/dapr/dapr/utils"
 	kiterrors "github.com/dapr/kit/errors"
 	"github.com/dapr/kit/logger"
-	"github.com/nats-io/nats.go"
 )
 
 const (
 	daprHTTPStatusHeader = "dapr-http-status"
 	metadataPrefix       = "metadata."
 )
+
+type PublishEventCallback func(ctx context.Context, subject string, data []byte) error
+
+var natsPublishCallback PublishEventCallback
 
 // API is the gRPC interface for the Dapr gRPC API. It implements both the internal and external proto definitions.
 type API interface {
@@ -101,8 +104,8 @@ type api struct {
 	closeCh               chan struct{}
 	wg                    sync.WaitGroup
 
-	natsConn *nats.Conn
-	natsJS   nats.JetStreamContext
+	// for catalyst NATS eventing
+	natsPublishCallback PublishEventCallback
 }
 
 // APIOpts contains options for NewAPI.
@@ -118,9 +121,8 @@ type APIOpts struct {
 	TracingSpec           config.TracingSpec
 	AccessControlList     *config.AccessControlList
 	Processor             *processor.Processor
-
-	NATSConn *nats.Conn
-	NATSJS   nats.JetStreamContext
+	// for catalyst NATS eventing
+	NatsPublishCallback PublishEventCallback
 }
 
 // NewAPI returns a new gRPC API.
@@ -139,10 +141,14 @@ func NewAPI(opts APIOpts) API {
 		accessControlList:     opts.AccessControlList,
 		processor:             opts.Processor,
 		closeCh:               make(chan struct{}),
-
-		natsConn: opts.NATSConn,
-		natsJS:   opts.NATSJS,
+		// for catalyst NATS eventing
+		natsPublishCallback: opts.NatsPublishCallback,
 	}
+}
+
+// RegisterNATSCallback registers a callback for publishing to NATS
+func RegisterNATSCallback(callback PublishEventCallback) {
+	natsPublishCallback = callback
 }
 
 // validateAndGetPubsubAndTopic validates the request parameters and returns the pubsub interface, pubsub name, topic name, rawPayload metadata if set

@@ -130,8 +130,7 @@ type DaprRuntime struct {
 	clock                 clock.Clock
 	reloader              *hotreload.Reloader
 
-	natsJS   nats.JetStreamContext
-	natsConn *nats.Conn
+	natsPublishCallback grpc.PublishEventCallback
 
 	// Used for testing.
 	initComplete chan struct{}
@@ -573,22 +572,9 @@ func (a *DaprRuntime) initRuntime(ctx context.Context) error {
 	})
 
 	// Initialize NATS connection and JetStream context
-	natsConn, err := nats.Connect(nats.DefaultURL)
+	err = a.initNATS(ctx)
 	if err != nil {
-		return fmt.Errorf("failed to connect to NATS: %w", err)
-	}
-
-	natsJS, err := natsConn.JetStream()
-	if err != nil {
-		return fmt.Errorf("failed to initialize NATS JetStream: %w", err)
-	}
-
-	a.natsConn = natsConn
-	a.natsJS = natsJS
-
-	// Add the NATS connection close method to the runner closer manager
-	if err = a.runnerCloser.AddCloser(natsConn.Close); err != nil {
-		return err
+		return fmt.Errorf("failed to initialize NATS: %w", err)
 	}
 
 	// Create and start internal and external gRPC servers
@@ -604,8 +590,7 @@ func (a *DaprRuntime) initRuntime(ctx context.Context) error {
 		TracingSpec:           a.globalConfig.GetTracingSpec(),
 		AccessControlList:     a.accessControlList,
 		Processor:             a.processor,
-		NATSConn:              a.natsConn,
-		NATSJS:                a.natsJS,
+		NatsPublishCallback:   a.natsPublishCallback,
 	})
 
 	if err = a.runnerCloser.AddCloser(a.daprGRPCAPI); err != nil {
@@ -1461,5 +1446,34 @@ func (a *DaprRuntime) stopTrace(ctx context.Context) error {
 	} else {
 		a.tracerProvider = nil
 	}
+	return nil
+}
+
+func (a *DaprRuntime) initNATS(ctx context.Context) error {
+	if os.Getenv("ENABLE_NATS") == "true" {
+		natsConn, err := nats.Connect(nats.DefaultURL)
+		if err != nil {
+			return fmt.Errorf("failed to connect to NATS: %w", err)
+		}
+
+		natsJS, err := natsConn.JetStream()
+		if err != nil {
+			return fmt.Errorf("failed to initialize NATS JetStream: %w", err)
+		}
+
+		natsPublishCallback := func(ctx context.Context, subject string, data []byte) error {
+			_, err := natsJS.Publish(subject, data)
+			return err
+		}
+
+		grpc.RegisterNATSCallback(natsPublishCallback)
+		a.natsPublishCallback = natsPublishCallback
+
+		// Add the NATS connection close method to the runner closer
+		if err = a.runnerCloser.AddCloser(natsConn.Close); err != nil {
+			return err
+		}
+	}
+
 	return nil
 }

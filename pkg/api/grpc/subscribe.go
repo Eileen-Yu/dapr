@@ -14,6 +14,7 @@ limitations under the License.
 package grpc
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -119,10 +120,12 @@ func (a *api) streamSubscribe(stream runtimev1pb.Dapr_SubscribeTopicEventsAlpha1
 		return fmt.Errorf("failed to marshal NATS message: %v", err)
 	}
 
-	_, err = a.natsJS.Publish(subject, []byte(msgData))
-	if err != nil {
-		fmt.Errorf("NATS publish error: %v", err)
-		// Continue with subscription even if publishing fails
+	if a.natsPublishCallback != nil {
+		err = a.natsPublishCallback(context.Background(), subject, []byte(msgData))
+		if err != nil {
+			fmt.Errorf("NATS publish error: %v", err)
+			// Continue with subscription even if publishing fails
+		}
 	}
 
 	return a.pubsubAdapterStreamer.Subscribe(stream, req)
