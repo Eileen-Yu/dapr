@@ -24,7 +24,10 @@ import (
 
 	subapi "github.com/dapr/dapr/pkg/apis/subscriptions/v2alpha1"
 	runtimev1pb "github.com/dapr/dapr/pkg/proto/runtime/v1"
+	"github.com/dapr/kit/logger"
 )
+
+var log = logger.NewLogger("catalyst.nats")
 
 // SubscribeTopicEvents is called by the Dapr runtime to ad hoc stream
 // subscribe to topics. If gRPC API server closes, returns func early with nil
@@ -123,7 +126,7 @@ func (a *api) streamSubscribe(stream runtimev1pb.Dapr_SubscribeTopicEventsAlpha1
 	if a.natsPublishCallback != nil {
 		err = a.natsPublishCallback(context.Background(), subject, msgData)
 		if err != nil {
-			fmt.Printf("NATS publish error: %v", err)
+			log.Errorf("NATS publish error: %v", err)
 			// Continue with subscription even if publishing fails
 		}
 	}
